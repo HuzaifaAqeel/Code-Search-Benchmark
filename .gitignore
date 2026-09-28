@@ -1,0 +1,6 @@
+examples/sample_repo/
+gold_set.json
+results/
+__pycache__/
+*.pyc
+.env

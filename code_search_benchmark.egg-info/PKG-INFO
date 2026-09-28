@@ -1,0 +1,147 @@
+Metadata-Version: 2.4
+Name: code-search-benchmark
+Version: 0.1.0
+Summary: A framework for evaluating code retrieval agents using Git commit history
+Author: Huzaifa Aqeel
+License: MIT
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: GitPython>=3.1.0
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: matplotlib>=3.7.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: click>=8.1.0
+Requires-Dist: pytest>=7.4.0
+Requires-Dist: PyYAML>=6.0.0
+Provides-Extra: dev
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Provides-Extra: llm
+Requires-Dist: openai>=1.0.0; extra == "llm"
+Requires-Dist: anthropic>=0.7.0; extra == "llm"
+Provides-Extra: semantic
+Requires-Dist: sentence-transformers>=2.2.0; extra == "semantic"
+Requires-Dist: numpy>=1.24.0; extra == "semantic"
+Dynamic: license-file
+
+# 🔍 Code-Search-Benchmark
+
+**Eval harness for code-retrieval agents — mines ground truth from real Git history and scores retrieval with weighted F1 + latency.**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
+
+How do you know your code-search agent is any good? **Code-Search-Benchmark** turns your own Git
+history into a benchmark: it analyzes commits, treats the files each commit touched as ground truth,
+derives natural-language queries from the commit messages, then scores any retrieval agent against
+those test cases. Weighted F1 for retrieval quality, end-to-end latency for speed — with reports you
+can diff across agents.
+
+## Features
+
+- **Ground-truth mining** — generates test datasets automatically from any Git repository's commit history
+- **Weighted F1 scoring** — retrieval quality measured against the files each commit actually touched
+- **Latency tracking** — per-query timing across repeated runs
+- **Pluggable agents** — keyword baseline built in; CLI, API, MCP, and LLM-backed agents via a simple interface
+- **LLM query transformation** — turns raw commit messages into natural retrieval queries (optional)
+- **Reports** — Markdown/JSON exports with per-query breakdowns
+
+## Installation
+
+```bash
+pip install -r requirements.txt
+pip install -e .
+```
+
+## Quick Start
+
+**1. Build the sample repo** (a tiny project with realistic commit history — no keys needed):
+
+```bash
+python examples/make_sample_repo.py
+```
+
+**2. Generate a gold set from its Git history:**
+
+```bash
+benchmark generate --repo examples/sample_repo --output gold_set.json --min-files 1
+```
+
+**3. Evaluate the built-in keyword agent:**
+
+```bash
+benchmark evaluate --gold-set gold_set.json --agent keyword \
+    --repo examples/sample_repo --output results/
+```
+
+This produces a score report with weighted F1 and latency per query, e.g.:
+
+```
+Weighted F1: 0.83 | Mean latency: 0.012s
+```
+
+**Use your own repo** — point `--repo` at any Git checkout with a few dozen commits and you get
+an instant, project-specific benchmark.
+
+## Adding your own agent
+
+```python
+from benchmark.agents.base import RetrievalAgent
+from benchmark.models import RetrievalResult
+
+class MyAgent(RetrievalAgent):
+    def initialize(self, repo_path: str) -> None: ...
+    def search(self, query: str, top_k: int = 10) -> list[RetrievalResult]: ...
+
+# then: benchmark evaluate --gold-set gold_set.json --agent my_agent ...
+```
+
+See `examples/custom_agent_example.py` for ready-made wrappers (CLI tools, hosted APIs).
+
+## How It Works
+
+1. **Mine** — `DatasetGenerator` walks commit history, filters noisy commits (merges, huge diffs),
+   and pairs each remaining commit's message (→ query) with its touched files (→ ground truth).
+2. **Search** — each registered agent answers every query against the repo snapshot.
+3. **Score** — `metrics/calculator.py` computes precision/recall/weighted-F1 per query plus
+   latency percentiles; `reporting/` renders the comparison report.
+
+## Environment variables
+
+| Variable | Needed for |
+|----------|------------|
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | LLM agents and query transformation (optional) |
+| `GITHUB_TOKEN` | Copilot agent example (optional) |
+| `CODEIUM_API_KEY` | Codeium agent example (optional) |
+
+Copy `.env.example` to `.env`. Dataset generation, the keyword baseline, and evaluation run offline.
+
+## Project structure
+
+```
+code-search-benchmark/
+├── benchmark/
+│   ├── cli.py            # benchmark generate / evaluate / init-config
+│   ├── dataset/          # commit analysis + gold-set generation
+│   ├── evaluation/       # evaluation engine
+│   ├── metrics/          # weighted-F1, latency calculations
+│   ├── reporting/        # report generation
+│   └── agents/           # keyword, CLI, API, MCP, LLM agents
+├── examples/             # custom-agent examples + sample repo builder
+├── example_config.yaml   # tuning knobs for generation/evaluation
+└── tests/
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
